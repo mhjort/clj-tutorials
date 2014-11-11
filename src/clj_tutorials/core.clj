@@ -52,3 +52,14 @@
     (doseq [c cs]
       (go (>! c (step))))
     (repeatedly number-of-users #(collect-result cs))))
+
+(defn bench [function]
+  (let [start (System/currentTimeMillis)
+        result (function)]
+    [(- (System/currentTimeMillis) start) result]))
+
+(defn run-with-bench [number-of-users step]
+  (with-channels [cs number-of-users]
+    (doseq [c cs]
+      (go (>! c (bench step))))
+    (repeatedly number-of-users #(collect-result cs))))
