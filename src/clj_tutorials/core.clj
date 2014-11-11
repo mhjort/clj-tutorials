@@ -39,3 +39,16 @@
       (doseq [c cs]
         (async/close! c))
       results)))
+
+
+(defmacro with-channels [binding & body]
+  `(let [~(first binding) (repeatedly ~(second binding) async/chan)
+    ~'result (do ~@body)]
+    (dorun ~'result) ;Lazy results must be evaluated before channels are closed
+    (doseq [~'c ~(first binding)] (async/close! ~'c))                                                        ~'result))
+
+(defn run-with-macro [number-of-users step]
+  (with-channels [cs number-of-users]
+    (doseq [c cs]
+      (go (>! c (step))))
+    (repeatedly number-of-users #(collect-result cs))))
