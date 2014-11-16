@@ -64,3 +64,18 @@
     (doseq [c cs]
       (go (>! c (bench step))))
     (repeatedly number-of-users #(collect-result cs))))
+
+
+
+(defn callback->chan [fn-with-cb]
+  (let [start (System/currentTimeMillis)
+        c (async/chan)]
+    (fn-with-cb #(async/put! c [(- (System/currentTimeMillis) start) %]))
+    c))
+
+(defn run-non-blocking [number-of-users step]
+  (let [cs (repeatedly number-of-users async/chan)]
+    (doseq [c cs]
+      (go (>! c (callback->chan step))))
+    (let [results (repeatedly number-of-users #(collect-result cs))]
+      (repeatedly number-of-users  #(collect-result results)))))
