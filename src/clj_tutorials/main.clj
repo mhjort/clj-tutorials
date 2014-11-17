@@ -18,6 +18,6 @@
   (GET "/ping" [] (pong)))
 
 (defn run []
-  (run-server (handler/api app-routes) {:port 8080 :join? false}))
+  (run-server (handler/api app-routes) {:port 8080 :join? false :thread 1000}))
 
 
