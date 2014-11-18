@@ -54,19 +54,14 @@
 
 ;(STEP 5 "Non blocking http")
 
-(defn non-blocking-http-get [url]
-  (fn [cb]
-    (http/get url {} #(cb (= 200 (:status %))))))
 
-(defn callback->chan [fn-with-cb]
-  (let [c (async/chan)
-        start (System/currentTimeMillis)]
-    (fn-with-cb #(async/put! c [(- (System/currentTimeMillis) start) %]))
-    c))
+(defn chan-http-get [url c]
+  (let [start (System/currentTimeMillis)]
+    (http/get url {} #(async/put! c [(- (System/currentTimeMillis) start)
+                                     (= 200 (:status %))]))))
 
 (defn run-non-blocking [number-of-users url]
   (let [cs (repeatedly number-of-users async/chan)]
     (doseq [c cs]
-      (go (>! c (callback->chan (non-blocking-http-get url)))))
-    (let [results (mapv (fn [_] (collect-result cs)) cs)]
-      (doall (repeatedly number-of-users  #(collect-result results))))))
+        (go (chan-http-get url c)))
+    (repeatedly number-of-users #(collect-result cs))))
