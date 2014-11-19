@@ -69,17 +69,16 @@
 
 ; (STEP 6 "With timeout")
 
-(defn chan-http-get-with-timeout [url timeout result-c]
-  (let [start (System/currentTimeMillis)
-        c (async/chan)
-        timeout-c (async/timeout timeout)]
+(defn chan-http-get-with-timeout [url timeout result-channel]
+  (let [now     #(System/currentTimeMillis)
+        start   (now)
+        response (async/chan)]
     (go
-      (http/get url {} #(async/put! c [(- (System/currentTimeMillis) start)
-                                       (= 200 (:status %))]))
-      (let [[result channel] (async/alts! [c timeout-c])]
-        (if (= timeout-c channel)
-          (async/put! result-c [timeout false])
-          (async/put! result-c result))))))
+      (http/get url {} #(async/put! response [(- (now) start) (= 200 (:status %))]))
+      (let [[result c] (async/alts! [response (async/timeout timeout)])]
+        (if (= c response)
+          (>! result-channel result)
+          (>! result-channel [timeout false]))))))
 
 (defn run-non-blocking-with-timeout [number-of-users timeout url]
   (let [cs (repeatedly number-of-users async/chan)]
