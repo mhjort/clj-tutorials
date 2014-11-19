@@ -65,3 +65,24 @@
     (doseq [c cs]
         (go (chan-http-get url c)))
     (repeatedly number-of-users #(collect-result cs))))
+
+
+; (STEP 6 "With timeout")
+
+(defn chan-http-get-with-timeout [url timeout result-c]
+  (let [start (System/currentTimeMillis)
+        c (async/chan)
+        timeout-c (async/timeout timeout)]
+    (go
+      (http/get url {} #(async/put! c [(- (System/currentTimeMillis) start)
+                                       (= 200 (:status %))]))
+      (let [[result channel] (async/alts! [c timeout-c])]
+        (if (= timeout-c channel)
+          (async/put! result-c [timeout false])
+          (async/put! result-c result))))))
+
+(defn run-non-blocking-with-timeout [number-of-users timeout url]
+  (let [cs (repeatedly number-of-users async/chan)]
+    (doseq [c cs]
+        (go (chan-http-get-with-timeout url timeout c)))
+    (repeatedly number-of-users #(collect-result cs))))
