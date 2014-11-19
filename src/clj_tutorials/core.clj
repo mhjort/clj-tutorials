@@ -85,3 +85,30 @@
     (doseq [c cs]
         (go (chan-http-get-with-timeout url timeout c)))
     (repeatedly number-of-users #(collect-result cs))))
+
+
+; (STEP 7 "Constantly for given Duration")
+
+(defn now [] (System/currentTimeMillis))
+
+(defn chan-http-get-with-timeout [url timeout result-channel]
+  (let [start   (now)
+        response (async/chan)]
+    (go
+      (http/get url {} #(async/put! response [(- (now) start) (= 200 (:status %))]))
+      (let [[result c] (async/alts! [response (async/timeout timeout)])]
+        (if (= c response)
+          (>! result-channel result)
+          (>! result-channel [timeout false]))))))
+
+(defn- collect-result-and-launch-new [cs timeout url]
+  (let [[result c] (async/alts!! cs)]
+    (chan-http-get-with-timeout url timeout c)
+    result))
+
+(defn run-constantly [number-of-users timeout duration url]
+  (let [cs (repeatedly number-of-users async/chan)
+        stop? (fn [_] (< (now) (+ (now) duration)))]
+    (doseq [c cs]
+        (go (chan-http-get-with-timeout url timeout c)))
+    (take-while stop? (map (fn [_] (collect-result-and-launch-new cs timeout url)) (range)))))
