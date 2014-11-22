@@ -1,6 +1,6 @@
 (ns clj-tutorials.core
   (:require [org.httpkit.client :as http]
-            [clojure.core.async :as async :refer [go <! >!]]))
+            [clojure.core.async :as async :refer [go go-loop <!! <! >!]]))
 
 
 
@@ -70,7 +70,8 @@
 ; (STEP 6 "With timeout")
 
 (defn chan-http-get-with-timeout [url timeout result-channel]
-  (let [now     #(System/currentTimeMillis)
+  (let [
+          now     #(System/currentTimeMillis)
         start   (now)
         response (async/chan)]
     (go
@@ -87,28 +88,17 @@
     (repeatedly number-of-users #(collect-result cs))))
 
 
-; (STEP 7 "Constantly for given Duration")
+; (STEP 7 "Constantly")
 
-(defn now [] (System/currentTimeMillis))
-
-(defn chan-http-get-with-timeout [url timeout result-channel]
-  (let [start   (now)
-        response (async/chan)]
-    (go
-      (http/get url {} #(async/put! response [(- (now) start) (= 200 (:status %))]))
-      (let [[result c] (async/alts! [response (async/timeout timeout)])]
-        (if (= c response)
-          (>! result-channel result)
-          (>! result-channel [timeout false]))))))
-
-(defn- collect-result-and-launch-new [cs timeout url]
-  (let [[result c] (async/alts!! cs)]
-    (chan-http-get-with-timeout url timeout c)
-    result))
-
-(defn run-constantly [number-of-users timeout duration url]
-  (let [cs (repeatedly number-of-users async/chan)
-        stop? (fn [_] (< (now) (+ (now) duration)))]
+(defn run-constantly [number-of-users number-of-requests timeout url]
+  (let [cs       (repeatedly number-of-users async/chan)
+        results  (async/chan)]
     (doseq [c cs]
-        (go (chan-http-get-with-timeout url timeout c)))
-    (take-while stop? (map (fn [_] (collect-result-and-launch-new cs timeout url)) (range)))))
+        (chan-http-get-with-timeout url timeout c))
+    (go-loop [i 0]
+      (let [[result c] (async/alts! cs)]
+        (>! results result)
+        (chan-http-get-with-timeout url timeout c)
+        (when (<= i number-of-requests)
+          (recur (inc i)))))
+    (repeatedly number-of-requests #(<!! results))))
