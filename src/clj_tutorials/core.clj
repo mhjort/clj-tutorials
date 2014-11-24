@@ -323,7 +323,8 @@
         (async-http-get-with-timeout url timeout c))
     (go-loop [i 0]
       (let [[result c] (alts! cs)]
-        (async-http-get-with-timeout url timeout c)
+        (when (< i (- number-of-requests concurrency))
+          (async-http-get-with-timeout url timeout c))
         (>! results result)
         (when (<= i number-of-requests)
           (recur (inc i)))))
