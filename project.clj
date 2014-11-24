@@ -8,4 +8,5 @@
                  [http-kit "2.1.19"]
                  [ring/ring-core "1.3.1"]
                  [javax.servlet/servlet-api "2.5"]
-                 [compojure "1.2.1"]])
+                 [compojure "1.2.1"]
+                 [clj-gatling "0.3.0"]])
