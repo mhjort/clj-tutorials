@@ -97,8 +97,8 @@
         (chan-http-get-with-timeout url timeout c))
     (go-loop [i 0]
       (let [[result c] (async/alts! cs)]
-        (>! results result)
         (chan-http-get-with-timeout url timeout c)
+        (>! results result)
         (when (<= i number-of-requests)
           (recur (inc i)))))
     (repeatedly number-of-requests #(<!! results))))
