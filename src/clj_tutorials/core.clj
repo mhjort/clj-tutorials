@@ -5,7 +5,78 @@
 
 
 
+
+
+
+
+
+
 ;;; Load testing using core.async (@mhjort) ;;;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(def ping-scenario
+  {:name "Ping scenario"
+   :requests [{:name "Ping endpoint" :http "http://localhost:8080/ping"}]})
+
+(def options
+  {:requests 200 :timeout-in-ms 90})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18,6 +89,42 @@
     (doseq [c cs]
       (go (>! c (step))))))
 
+;; "go transforms your sequential code into a state machine
+;;  way more complicated than you could ever write yourself."
+;;
+;;  -- LispCast
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ;STEP 2
@@ -26,6 +133,35 @@
     (doseq [c cs]
       (go (>! c (step))))
     (repeatedly concurrency #(first (alts!! cs)))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ;STEP 3
@@ -42,6 +178,26 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ;STEP 4
 (defn http-get [url]
   (fn []
@@ -52,6 +208,28 @@
     (doseq [c cs]
       (go (>! c (bench (http-get url)))))
     (repeatedly concurrency #(first (alts!! cs)))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -71,6 +249,25 @@
     (doseq [c cs]
       (go (async-http-get url c)))
     (repeatedly concurrency #(first (alts!! cs)))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ; (STEP 6 "With timeout")
@@ -93,6 +290,30 @@
     (repeatedly concurrency #(first (alts!! cs)))))
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ; (STEP 7 "Constantly")
 
 (defn run-constantly [concurrency number-of-requests timeout url]
@@ -102,8 +323,21 @@
         (async-http-get-with-timeout url timeout c))
     (go-loop [i 0]
       (let [[result c] (alts! cs)]
-        (chan-http-get-with-timeout url timeout c)
+        (async-http-get-with-timeout url timeout c)
         (>! results result)
         (when (<= i number-of-requests)
           (recur (inc i)))))
     (repeatedly number-of-requests #(<!! results))))
+
+
+
+
+
+
+
+
+
+
+
+
+
