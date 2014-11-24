@@ -1,27 +1,31 @@
 (ns clj-tutorials.core
   (:require [org.httpkit.client :as http]
-            [clojure.core.async :as async :refer [go go-loop <!! <! >!]]))
+            [clojure.core.async :as async :refer [go go-loop alts! alts!! put! <!! <! >!]]))
+
+
+
+
+;;; Load testing using core.async (@mhjort) ;;;
+
+
+
 
 
 
 ;STEP 1
-(defn run1 [number-of-users step]
-  (let [cs (repeatedly number-of-users async/chan)]
+(defn run1 [concurrency step]
+  (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
       (go (>! c (step))))))
 
 
 
 ;STEP 2
-(defn- collect-result [cs]
-  (let [[result c] (async/alts!! cs)]
-    result))
-
-(defn run-with-results [number-of-users step]
-  (let [cs (repeatedly number-of-users async/chan)]
+(defn run-with-results [concurrency step]
+  (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
       (go (>! c (step))))
-    (repeatedly number-of-users #(collect-result cs))))
+    (repeatedly concurrency #(first (alts!! cs)))))
 
 
 ;STEP 3
@@ -30,11 +34,11 @@
         result (function)]
     [(- (System/currentTimeMillis) start) result]))
 
-(defn run-with-bench [number-of-users step]
-  (let [cs (repeatedly number-of-users async/chan)]
+(defn run-with-bench [concurrency step]
+  (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
       (go (>! c (bench step))))
-    (repeatedly number-of-users #(collect-result cs))))
+    (repeatedly concurrency #(first (alts!! cs)))))
 
 
 
@@ -43,11 +47,11 @@
   (fn []
     (= 200 (:status @(http/get url)))))
 
-(defn run-with-url [number-of-users url]
-  (let [cs (repeatedly number-of-users async/chan)]
+(defn run-with-url [concurrency url]
+  (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
       (go (>! c (bench (http-get url)))))
-    (repeatedly number-of-users #(collect-result cs))))
+    (repeatedly concurrency #(first (alts!! cs)))))
 
 
 
@@ -55,48 +59,49 @@
 ;(STEP 5 "Non blocking http")
 
 
-(defn chan-http-get [url c]
-  (let [start (System/currentTimeMillis)]
-    (http/get url {} #(async/put! c [(- (System/currentTimeMillis) start)
-                                     (= 200 (:status %))]))))
+(defn async-http-get [url c]
+  (let [now   #(System/currentTimeMillis)
+        start (now)]
+    (go
+      (http/get url {} #(put! c [(- (now) start)
+                                 (= 200 (:status %))])))))
 
-(defn run-non-blocking [number-of-users url]
-  (let [cs (repeatedly number-of-users async/chan)]
+(defn run-non-blocking [concurrency url]
+  (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
-        (go (chan-http-get url c)))
-    (repeatedly number-of-users #(collect-result cs))))
+      (go (async-http-get url c)))
+    (repeatedly concurrency #(first (alts!! cs)))))
 
 
 ; (STEP 6 "With timeout")
 
-(defn chan-http-get-with-timeout [url timeout result-channel]
-  (let [
-          now     #(System/currentTimeMillis)
-        start   (now)
+(defn async-http-get-with-timeout [url timeout result-channel]
+  (let [now      #(System/currentTimeMillis)
+        start    (now)
         response (async/chan)]
     (go
-      (http/get url {} #(async/put! response [(- (now) start) (= 200 (:status %))]))
-      (let [[result c] (async/alts! [response (async/timeout timeout)])]
+      (http/get url {} #(put! response [(- (now) start) (= 200 (:status %))]))
+      (let [[result c] (alts! [response (async/timeout timeout)])]
         (if (= c response)
           (>! result-channel result)
           (>! result-channel [timeout false]))))))
 
-(defn run-non-blocking-with-timeout [number-of-users timeout url]
-  (let [cs (repeatedly number-of-users async/chan)]
+(defn run-non-blocking-with-timeout [concurrency timeout url]
+  (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
-        (go (chan-http-get-with-timeout url timeout c)))
-    (repeatedly number-of-users #(collect-result cs))))
+        (go (async-http-get-with-timeout url timeout c)))
+    (repeatedly concurrency #(first (alts!! cs)))))
 
 
 ; (STEP 7 "Constantly")
 
-(defn run-constantly [number-of-users number-of-requests timeout url]
-  (let [cs       (repeatedly number-of-users async/chan)
+(defn run-constantly [concurrency number-of-requests timeout url]
+  (let [cs       (repeatedly concurrency async/chan)
         results  (async/chan)]
     (doseq [c cs]
-        (chan-http-get-with-timeout url timeout c))
+        (async-http-get-with-timeout url timeout c))
     (go-loop [i 0]
-      (let [[result c] (async/alts! cs)]
+      (let [[result c] (alts! cs)]
         (chan-http-get-with-timeout url timeout c)
         (>! results result)
         (when (<= i number-of-requests)
