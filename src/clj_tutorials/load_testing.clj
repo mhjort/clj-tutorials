@@ -1,4 +1,4 @@
-(ns clj-tutorials.core
+(ns clj-tutorials.load-testing
   (:require [org.httpkit.client :as http]
             [clojure.core.async :as async :refer [go go-loop alts! alts!! put! <!! <! >!]]))
 
