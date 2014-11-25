@@ -43,14 +43,3 @@ Run in Repl and check steps from clj file.
 
 ```
 
-
-### Test server
-
-```clojure
-
-(require '[clj-tutorials.main :as main])
-
-(main/run 1000)
-
-```
-
