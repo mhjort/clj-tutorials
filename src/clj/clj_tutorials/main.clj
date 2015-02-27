@@ -1,6 +1,7 @@
 (ns clj-tutorials.main
   (:require [compojure.core :refer :all]
             [compojure.handler :as handler]
+            [compojure.route :as route]
             [org.httpkit.server :refer [run-server]])
   (:import [java.util.concurrent TimeUnit ScheduledThreadPoolExecutor]))
 
@@ -14,7 +15,8 @@
     "pong"))
 
 (defroutes app-routes
-  (GET "/ping" [] (pong)))
+  (GET "/ping" [] (pong))
+  (route/resources "/"))
 
 (defn print-ongoing-requests []
   (let [requests @ongoing-requests]
@@ -23,7 +25,7 @@
 
 (defn run [threads]
   (let [executor (ScheduledThreadPoolExecutor. 1)
-        stop-server-fn (run-server (handler/api app-routes) {:port 8080 :join? false :thread threads})]
+        stop-server-fn (run-server (handler/site #'app-routes) {:port 8080 :join? false :thread threads})]
     (.scheduleAtFixedRate executor print-ongoing-requests 0 50 TimeUnit/MILLISECONDS)
     (println "Server started at port 8080 with" threads "threads.")
     (fn []
