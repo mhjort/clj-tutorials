@@ -1,7 +1,7 @@
-(ns clj-tutorials.load-testing
+(ns clj-tutorials.core-async
   (:require [org.httpkit.client :as http]
             [clj-gatling.core :as clj-gatling]
-            [clojure.core.async :as async :refer [go go-loop alts! alts!! put! <!! <! >!]]))
+            [clojure.core.async :as async :refer [chan go go-loop alts! alts!! put! <!! <! >!]]))
 
 
 
@@ -12,7 +12,7 @@
 
 
 
-;;; Load testing using core.async (@mhjort) ;;;
+;;; core.async (@mhjort) ;;;
 
 
 
@@ -50,19 +50,20 @@
 
 
 
+; (CSP) Communicating sequential processes (Hoare, 1978)
 
+; => Go language goroutines
 
+; => core.async
 
 
-;; "go transforms your sequential code into a state machine
-;;  way more complicated than you could ever write yourself."
-;;
-;;  -- LispCast
 
 
 
 
+; JVM threadpool (2 x cores + 42)
 
+; Clojurescript
 
 
 
@@ -73,15 +74,21 @@
 
 
 
+; lightweight threads
 
+; communication via channels
 
 
 
 
 
+; Go macro
 
+;; Starts new goroutine that will start processing immediately
 
+;; Returns a channel where goroutine will write the result
 
+;; Possibility to park
 
 
 
@@ -91,11 +98,6 @@
 
 
 
-;STEP 1
-(defn run1 [concurrency step]
-  (let [cs (repeatedly concurrency async/chan)]
-    (doseq [c cs]
-      (go (>! c (step))))))
 
 
 
@@ -103,6 +105,9 @@
 
 
 
+(defn calculate-meaning-of-life []
+  ; Some heavy calculation
+  42)
 
 
 
@@ -127,12 +132,6 @@
 
 
 
-;STEP 2
-(defn run-with-results [concurrency step]
-  (let [cs (repeatedly concurrency async/chan)]
-    (doseq [c cs]
-      (go (>! c (step))))
-    (repeatedly concurrency #(first (alts!! cs)))))
 
 
 
@@ -161,48 +160,32 @@
 
 
 
-;STEP 3
+
+
+
+
+
+
+
+
+
+
+
+;STEP 1 Load testing dummy way
 (defn bench [function]
   (let [start (System/currentTimeMillis)
         result (function)]
     [(- (System/currentTimeMillis) start) result]))
 
-(defn run-with-bench [concurrency step]
-  (let [cs (repeatedly concurrency async/chan)]
-    (doseq [c cs]
-      (go (>! c (bench step))))
-    (repeatedly concurrency #(first (alts!! cs)))))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-;STEP 4
 (defn http-get [url]
-  (fn []
-    (= 200 (:status @(http/get url)))))
+  #(= 200 (:status @(http/get url))))
 
-(defn run-with-url [concurrency url]
+(defn load-test-dummy [concurrency url]
   (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
       (go (>! c (bench (http-get url)))))
-    (repeatedly concurrency #(first (alts!! cs)))))
+    (repeatedly concurrency #(let [[result _] (alts!! cs)]
+                               result))))
 
 
 
@@ -227,22 +210,21 @@
 
 
 
-
-;(STEP 5 "Non blocking http")
+;STEP 2 Load testing fixed with async-http
 
 
 (defn async-http-get [url c]
   (let [now   #(System/currentTimeMillis)
         start (now)]
-    (go
-      (http/get url {} #(put! c [(- (now) start)
-                                 (= 200 (:status %))])))))
+    (http/get url {} #(put! c [(- (now) start)
+                               (= 200 (:status %))]))))
 
-(defn run-non-blocking [concurrency url]
+(defn load-test-fixed [concurrency url]
   (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
       (go (async-http-get url c)))
-    (repeatedly concurrency #(first (alts!! cs)))))
+    (repeatedly concurrency #(let [[result _] (alts!! cs)]
+                               result))))
 
 
 
@@ -264,7 +246,8 @@
 
 
 
-; (STEP 6 "With timeout")
+
+; STEP 3 With timeout
 
 (defn async-http-get-with-timeout [url timeout result-channel]
   (let [now      #(System/currentTimeMillis)
@@ -277,11 +260,12 @@
           (>! result-channel result)
           (>! result-channel [timeout false]))))))
 
-(defn run-non-blocking-with-timeout [concurrency timeout url]
+(defn load-test-with-timeout [concurrency timeout url]
   (let [cs (repeatedly concurrency async/chan)]
     (doseq [c cs]
         (go (async-http-get-with-timeout url timeout c)))
-    (repeatedly concurrency #(first (alts!! cs)))))
+    (repeatedly concurrency #(let [[result _] (alts!! cs)]
+                               result))))
 
 
 
@@ -307,10 +291,9 @@
 
 
 
+; STEP 4 Constantly"
 
-; (STEP 7 "Constantly")
-
-(defn run-constantly [concurrency number-of-requests timeout url]
+(defn load-test-constantly [concurrency number-of-requests timeout url]
   (let [cs       (repeatedly concurrency async/chan)
         results  (async/chan)]
     (doseq [c cs]
@@ -351,8 +334,7 @@
 
 
 
-
-; (STEP 8 "Full solution")
+; (STEP 5 "Full solution")
 
 (defn- async-http-request [url user-id callback]
   (let [check-status (fn [{:keys [status]}] (callback (= 200 status)))]
@@ -418,7 +400,7 @@
 
 
 
-; (STEP 9 "clj-gatling")
+; (STEP 6 "clj-gatling")
 
 (def options
   {:requests 9000 :timeout-in-ms 90})
@@ -450,12 +432,13 @@
 
 ; Good stuff
 
-; SIMPLE FOR SOLVING ASYNC PROBLEMS
+;; SIMPLE FOR SOLVING ASYNC PROBLEMS
 
-; PERFORMS WELL
+;; PERFORMS WELL
 
-; SMALL LIBRARY
+;; SMALL LIBRARY
 
+;; CLOJURE & CLOJURESCRIPT
 
 
 
